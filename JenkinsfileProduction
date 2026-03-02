@@ -1,15 +1,6 @@
 pipeline { 
     agent any 
     stages { 
-        stage('Checkout Code') { 
-            steps { 
-              git(
-                branch: 'develop',
-                url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
-                credentialsId: 'GITHUB-CP1.4'
-              )
-            } 
-        } 
         stage('Build') { 
             steps { 
                 sh 'ls -la'
