@@ -126,13 +126,13 @@ pipeline {
    stage('==========>PROMOTE (MERGE MASTER)<===========') {
             steps {
                 echo "🚀 Promoviendo versión a Release..."
-                withCredentials([usernamePassword(credentialsId: 'CP1.4', usernameVariable: 'GITHUB_USER', passwordVariable: 'GITHUB_TOKEN')]) {
+                withCredentials([usernamePassword(credentialsId: 'GITHUB-CP1.4', usernameVariable: 'GITHUB_USER', passwordVariable: 'GITHUB_TOKEN')]) {
                   sh '''
                     git fetch origin
                     git checkout main
                     git pull origin main
                     git merge origin/develop
-                    git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/Justinarley/todo-list-aws-cp1-3.git main
+                    git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
                   '''
                 }
             }
