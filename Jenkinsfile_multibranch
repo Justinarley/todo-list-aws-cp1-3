@@ -124,7 +124,7 @@ pipeline {
                         fi
 
                         echo "Deploying to environment: $ENVIRONMENT"
-                        sam deploy --config-env $ENVIRONMENT --no-fail-on-empty-changeset
+                        sam deploy --no-fail-on-empty-changeset
                     '''
 
                     env.BASE_URL = sh(
