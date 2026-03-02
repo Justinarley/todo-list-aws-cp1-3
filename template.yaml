@@ -18,14 +18,15 @@ Globals:
     Environment:
       Variables:
         STAGE: !Ref Stage
-        TABLE_NAME: !Sub "todo-list-${Stage}"
+        DYNAMODB_TABLE: !Sub "todo-list-${Stage}"
+        ENDPOINT_OVERRIDE: ""
 
 Resources:
   # API
   ServerlessApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: !Sub "todo-list-${Stage}"
+      Name: !Sub "todo-list-api-${Stage}"
       StageName: !Ref Stage
 
   # DynamoDB
