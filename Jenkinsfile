@@ -1,39 +1,35 @@
-pipeline { 
-    agent any 
-    
-    stages { 
-        
-        stage('Source Retrieval') { 
-            steps { 
-                git branch: 'develop',
-                url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git'
-            }
-        } 
-        
-        
+pipeline {
+    agent any
 
-        stage('Workspace Check') { 
-            steps { 
-                sh 'ls -lah'
-            }    
-        }
-        
-        stage('Static Analysis'){
+    stages {
+
+        stage('Source Retrieval') {
             steps {
-                catchError(
-                    buildResult: 'UNSTABLE',
-                    stageResult: 'FAILURE'
-                ) {
-                    sh ''' 
+                git branch: 'develop',
+                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git'
+            }
+        }
+
+        stage('Workspace Check') {
+            steps {
+                sh 'ls -lah'
+            }
+        }
+
+        stage('Static Analysis') {
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                    sh '''
                         export PYTHONPATH=.
                         flake8 --exit-zero --format=pylint src > lint-report.out
-                    ''' 
+                    '''
+
                     recordIssues(
                         qualityGates: [
                             [criticality: 'NOTE', integerThreshold: 7, threshold: 7.0, type: 'TOTAL'],
                             [criticality: 'ERROR', integerThreshold: 9, threshold: 9.0, type: 'TOTAL']
                         ],
-                        tools:[
+                        tools: [
                             flake8(pattern: 'lint-report.out')
                         ]
                     )
@@ -43,16 +39,17 @@ pipeline {
 
         stage('Code Security Scan') {
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE'){ 
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
                         bandit -r src -f custom -o security-report.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
                     '''
+
                     recordIssues(
                         qualityGates: [
                             [criticality: 'NOTE', integerThreshold: 3, type: 'TOTAL'],
                             [criticality: 'FAILURE', integerThreshold: 5, type: 'TOTAL']
                         ],
-                        tools:[
+                        tools: [
                             pyLint(pattern: 'security-report.out')
                         ]
                     )
@@ -62,7 +59,7 @@ pipeline {
 
         stage('Serverless Deployment') {
             steps {
-                script{
+                script {
                     sh '''
                         set -e
 
@@ -108,7 +105,7 @@ pipeline {
                         echo "===== Deploying Application ====="
                         sam deploy --config-env staging --no-fail-on-empty-changeset
                     '''
-                    
+
                     env.APP_ENDPOINT = sh(
                         script: '''
                             aws cloudformation describe-stacks \
@@ -125,17 +122,24 @@ pipeline {
             }
         }
 
-   stage('==========>PROMOTE (MERGE MAIN)<===========') {
+        stage('==========>PROMOTE (MERGE MAIN)<===========') {
             steps {
                 echo "🚀 Promoviendo versión ..."
-                withCredentials([usernamePassword(credentialsId: 'GITHUB-CP1.4', usernameVariable: 'GITHUB_USER', passwordVariable: 'GITHUB_TOKEN')]) {
-                  sh '''
-                    git fetch origin
-                    git checkout main
-                    git pull origin main
-                    git merge origin/develop
-                    git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
-                  '''
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'GITHUB-CP1.4',
+                        usernameVariable: 'GITHUB_USER',
+                        passwordVariable: 'GITHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        git fetch origin
+                        git checkout main
+                        git pull origin main
+                        git merge origin/develop
+                        git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
+                    '''
                 }
             }
         }
