@@ -6,61 +6,49 @@ pipeline {
     stages { 
         stage('Checkout Code') { 
             steps { 
-              git(
-                branch: 'develop',
-                url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
-                credentialsId: 'GITHUB-CP1.4'
-              )
+                git(
+                    branch: 'develop',
+                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
+                    credentialsId: 'GITHUB-CP1.4'
+                )
             } 
         }
+
         stage('SAM CONFIG') {
-          when {
-            branch 'develop'
-          }
-          steps {
-            echo "📥 Reemplazando configuración local..."
-
-            sh '''
-                CONFIG_URL="https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/staging/samconfig.toml"
-
-                # eliminar config del repo app (si existe)
-                rm -f samconfig.toml
-
-                # descargar config del repo de configuración
-                curl -f -L $CONFIG_URL -o samconfig.toml
-            '''
-
-            echo "✅ Configuración FINAL usada por SAM:"
-            sh "cat samconfig.toml"
-        }
-        }
-         stage('Download configuration (PRODUCTION)') {
-          when {
-            branch 'main'
-          }
-          steps {
-            echo "📥 Reemplazando configuración local..."
-
-            sh '''
-                CONFIG_URL="https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/production/samconfig.toml"
-
-                # eliminar config del repo app (si existe)
-                rm -f samconfig.toml
-
-                # descargar config del repo de configuración
-                curl -f -L $CONFIG_URL -o samconfig.toml
-            '''
-
-            echo "✅ Configuración FINAL usada por SAM:"
-            sh "cat samconfig.toml"
-        }
-        }
-        stage('Tests'){
+            when {
+                branch 'develop'
+            }
             steps {
-                catchError(
-                    buildResult: 'UNSTABLE',
-                    stageResult: 'FAILURE'
-                ) {
+                echo "📥 Reemplazando configuración local..."
+                sh '''
+                    CONFIG_URL="https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/staging/samconfig.toml"
+                    rm -f samconfig.toml
+                    curl -f -L $CONFIG_URL -o samconfig.toml
+                '''
+                echo "✅ Configuración FINAL usada por SAM:"
+                sh "cat samconfig.toml"
+            }
+        }
+
+        stage('Download configuration (PRODUCTION)') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo "📥 Reemplazando configuración local..."
+                sh '''
+                    CONFIG_URL="https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/production/samconfig.toml"
+                    rm -f samconfig.toml
+                    curl -f -L $CONFIG_URL -o samconfig.toml
+                '''
+                echo "✅ Configuración FINAL usada por SAM:"
+                sh "cat samconfig.toml"
+            }
+        }
+
+        stage('Tests') {
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     sh ''' 
                         export PYTHONPATH=.
                         flake8 --exit-zero --format=pylint src > flake8.out
@@ -77,16 +65,18 @@ pipeline {
                 }
             }
         }
+
         stage('Security') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE'){ 
-                sh '''
-                    bandit -r src -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
-                '''
+                    sh '''
+                        bandit -r src -f custom -o bandit.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                    '''
                     recordIssues(
                         qualityGates: [
                             [criticality: 'NOTE', integerThreshold: 2, type: 'TOTAL'],
-                            [criticality: 'FAILURE', integerThreshold: 4, type: 'TOTAL'] ],
+                            [criticality: 'FAILURE', integerThreshold: 4, type: 'TOTAL'] 
+                        ],
                         tools:[
                             pyLint(pattern: 'bandit.out')
                         ]
@@ -94,154 +84,117 @@ pipeline {
                 }
             }
         }
+
         stage('SAM deploy') {
-           steps {
-                script{
+            steps {
+                script {
                     sh '''
                         set -e
-                            REGION="us-east-1"
+                        REGION="us-east-1"
                         echo "===== AWS Identity ====="
                         aws sts get-caller-identity
 
-                                    echo "===== Checking existing stack ====="
+                        echo "===== Checking existing stack ====="
+                        STACK_STATUS=$(aws cloudformation describe-stacks \
+                            --stack-name $STACK_NAME \
+                            --region $REGION \
+                            --query "Stacks[0].StackStatus" \
+                            --output text 2>/dev/null || echo "NOT_FOUND")
+                        echo "Stack status: $STACK_STATUS"
 
-                                    STACK_STATUS=$(aws cloudformation describe-stacks \
-                                        --stack-name $STACK_NAME \
-                                        --region $REGION \
-                                        --query "Stacks[0].StackStatus" \
-                                        --output text 2>/dev/null || echo "NOT_FOUND")
+                        if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || \
+                           [ "$STACK_STATUS" = "CREATE_FAILED" ] || \
+                           [ "$STACK_STATUS" = "UPDATE_ROLLBACK_COMPLETE" ]; then
+                            echo "Deleting broken stack..."
+                            aws cloudformation delete-stack --stack-name $STACK_NAME --region $REGION
+                            aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME --region $REGION
+                            echo "Stack deleted."
+                        fi
 
-                                    echo "Stack status: $STACK_STATUS"
+                        echo "===== SAM Build ====="
+                        sam build
 
-                                    # 🔥 Si el stack quedó roto, eliminarlo
-                                    if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || \
-                                       [ "$STACK_STATUS" = "CREATE_FAILED" ] || \
-                                       [ "$STACK_STATUS" = "UPDATE_ROLLBACK_COMPLETE" ]; then
+                        echo "===== SAM Validate ====="
+                        sam validate --region $REGION
 
-                                        echo "Deleting broken stack..."
+                        if [ "$BRANCH_NAME" = "main" ]; then
+                            ENVIRONMENT="production"
+                        else
+                            ENVIRONMENT="staging"
+                        fi
 
-                                        aws cloudformation delete-stack \
-                                            --stack-name $STACK_NAME \
-                                            --region $REGION
+                        echo "Deploying to environment: $ENVIRONMENT"
+                        sam deploy --config-env $ENVIRONMENT --no-fail-on-empty-changeset
+                    '''
 
-                                        echo "Waiting stack deletion..."
-                                        aws cloudformation wait stack-delete-complete \
-                                            --stack-name $STACK_NAME \
-                                            --region $REGION
+                    env.BASE_URL = sh(
+                        script: '''
+                            aws cloudformation describe-stacks \
+                                --stack-name $STACK_NAME \
+                                --region us-east-1 \
+                                --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+                                --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-                                        echo "Stack deleted."
-                                    fi
-
-                                    echo "===== SAM Build ====="
-                                    sam build
-
-                                    echo "===== SAM Validate ====="
-                                    sam validate --region $REGION
-
-                                    echo "===== SAM Deploy ====="
-                         if [ "$BRANCH_NAME" = "main" ]; then
-                    ENVIRONMENT="production"
-                else
-                    ENVIRONMENT="staging"
-                fi
-
-                echo "Deploying to environment: $ENVIRONMENT"
-
-                echo "===== SAM Deploy ====="
-                sam deploy \
-                    --config-env $ENVIRONMENT \
-                    --no-fail-on-empty-changeset
-        '''
-        
-        env.BASE_URL = sh(
-                script: '''
-                    aws cloudformation describe-stacks \
-                                            --stack-name $STACK_NAME \
-                      --region us-east-1 \
-                      --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-                      --output text
-                ''',
-                returnStdout: true
-            ).trim()
-
-            echo "BASE_URL = ${env.BASE_URL}"
-        }
-    }
-        }
-        stage('API Tests (pytest)') {
-           when {
-          branch 'develop'
-        }
-            environment {
-                BASE_URL = "${env.BASE_URL}"
+                    echo "BASE_URL = ${env.BASE_URL}"
+                }
             }
-            steps{
+        }
+
+        stage('API Tests (pytest)') {
+            when { branch 'develop' }
+            environment { BASE_URL = "${env.BASE_URL}" }
+            steps {
                 sh '''
                     python3 -m venv .venv
                     . .venv/bin/activate
-                    
                     pip install pytest requests
-
                     pytest -v test/integration/todoApiTest.py --junitxml=result_unit.xml
                 '''
-                 junit 'result_unit.xml'
+                junit 'result_unit.xml'
             }
-        }https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/staging/samconfig.toml
+        }
 
         stage('API Tests (pytest) - Read Only') {
-          when {
-        branch 'main'   // ⚠️ Solo promover desde develop
-    }
-            environment {
-                BASE_URL = "${env.BASE_URL}"
-            }
-            steps{
+            when { branch 'main' }
+            environment { BASE_URL = "${env.BASE_URL}" }
+            steps {
                 sh '''
                     python3 -m venv .venv
                     . .venv/bin/activate
-                    
                     pip install pytest requests
-
-                    # Solo ejecuta pruebas de lectura (sin modificar datos en producción)
                     pytest -v test/integration/todoApiReadOnlyTest.py --junitxml=result_unit.xml
                 '''
-                 junit 'result_unit.xml'
+                junit 'result_unit.xml'
             }
         }
-        
+
         stage('PROMOTE') {
-           when {
-    when {
-        branch 'develop'   // ⚠️ Solo promover desde develop
-    }
-    steps {
-        echo "🚀 Promoviendo versión a Release..."
-        withCredentials([usernamePassword(
-            credentialsId: 'GITHUB-CP1.4',
-            usernameVariable: 'GITHUB_USER',
-            passwordVariable: 'GITHUB_TOKEN'
-        )]) {
-            sh '''
-                set -e
-
-                git fetch origin main
-
-                # Crear rama local main basada en origin/main
-                git checkout -B main origin/main
-
-                # Merge develop dentro de main
-                git merge origin/develop --no-edit
-
-                git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
-            '''
+            when { branch 'develop' }
+            steps {
+                echo "🚀 Promoviendo versión a Release..."
+                withCredentials([usernamePassword(
+                    credentialsId: 'GITHUB-CP1.4',
+                    usernameVariable: 'GITHUB_USER',
+                    passwordVariable: 'GITHUB_TOKEN'
+                )]) {
+                    sh '''
+                        set -e
+                        git fetch origin main
+                        git checkout -B main origin/main
+                        git merge origin/develop --no-edit
+                        git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
+                    '''
+                }
+            }
         }
     }
-}
-    }
+
     post {
         always {
             cleanWs()
         }
     }
-}
 }
