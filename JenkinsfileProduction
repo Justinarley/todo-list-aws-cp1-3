@@ -81,7 +81,7 @@ pipeline {
             }
         }
 
-        stage('API Tests (Read Only)') {
+        stage('Rest Test') {
             steps {
                 sh """
                     export BASE_URL=${env.BASE_URL}
