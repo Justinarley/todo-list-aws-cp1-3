@@ -1,113 +1,81 @@
-pipeline { 
-    agent any 
-    
-    stages { 
-        
-        stage('Source Retrieval') { 
-            steps { 
-                git branch: 'develop',
-                url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git'
-            }
-        }
-        
-        stage('Workspace Check') { 
-            steps { 
-                sh 'ls -lah'
-            }    
-        }
-        
-        stage('Static Analysis'){
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Get Code') {
             steps {
-                catchError(
-                    buildResult: 'UNSTABLE',
-                    stageResult: 'FAILURE'
-                ) {
-                    sh ''' 
-                        export PYTHONPATH=.
-                        flake8 --exit-zero --format=pylint src > lint-report.out
-                    ''' 
-                    recordIssues(
-                        qualityGates: [
-                            [criticality: 'NOTE', integerThreshold: 7, threshold: 7.0, type: 'TOTAL'],
-                            [criticality: 'ERROR', integerThreshold: 9, threshold: 9.0, type: 'TOTAL']
-                        ],
-                        tools:[
-                            flake8(pattern: 'lint-report.out')
-                        ]
-                    )
-                }
+                git(
+                    branch: 'develop',
+                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
+                    credentialsId: 'GITHUB-CP1.4'
+                )
             }
         }
 
-        stage('Code Security Scan') {
+        stage('Static Test') {
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE'){ 
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+
                     sh '''
-                        bandit -r src -f custom -o security-report.out --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                        export PYTHONPATH=.
+                        flake8 --exit-zero --format=pylint src > flake8.out
                     '''
+
                     recordIssues(
-                        qualityGates: [
-                            [criticality: 'NOTE', integerThreshold: 3, type: 'TOTAL'],
-                            [criticality: 'FAILURE', integerThreshold: 5, type: 'TOTAL']
-                        ],
-                        tools:[
-                            pyLint(pattern: 'security-report.out')
-                        ]
+                        tools: [flake8(pattern: 'flake8.out')]
+                    )
+
+                    sh '''
+                        bandit -r src -f custom -o bandit.out \
+                        --msg-template "{abspath}:{line}: [{test_id}] {msg}"
+                    '''
+
+                    recordIssues(
+                        tools: [pyLint(pattern: 'bandit.out')]
                     )
                 }
             }
         }
 
-        stage('Serverless Deployment') {
+        stage('Deploy') {
             steps {
-                script{
+                script {
+
                     sh '''
                         set -e
 
-                        DEPLOY_STACK="todo-list-aws-staging"
-                        AWS_REGION="us-east-1"
+                        STACK_NAME="todo-list-aws-staging"
+                        REGION="us-east-1"
 
-                        echo "===== Verifying AWS Identity ====="
+                        echo "===== AWS Identity ====="
                         aws sts get-caller-identity
 
-                        echo "===== Checking Stack Status ====="
-
-                        CURRENT_STATUS=$(aws cloudformation describe-stacks \
-                            --stack-name $DEPLOY_STACK \
-                            --region $AWS_REGION \
+                        STACK_STATUS=$(aws cloudformation describe-stacks \
+                            --stack-name $STACK_NAME \
+                            --region $REGION \
                             --query "Stacks[0].StackStatus" \
                             --output text 2>/dev/null || echo "NOT_FOUND")
 
-                        echo "Current status: $CURRENT_STATUS"
-
-                        if [ "$CURRENT_STATUS" = "ROLLBACK_COMPLETE" ] || \
-                           [ "$CURRENT_STATUS" = "CREATE_FAILED" ] || \
-                           [ "$CURRENT_STATUS" = "UPDATE_ROLLBACK_COMPLETE" ]; then
-
-                            echo "Removing failed stack..."
+                        if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || \
+                           [ "$STACK_STATUS" = "CREATE_FAILED" ] || \
+                           [ "$STACK_STATUS" = "UPDATE_ROLLBACK_COMPLETE" ]; then
 
                             aws cloudformation delete-stack \
-                                --stack-name $DEPLOY_STACK \
-                                --region $AWS_REGION
+                                --stack-name $STACK_NAME \
+                                --region $REGION
 
                             aws cloudformation wait stack-delete-complete \
-                                --stack-name $DEPLOY_STACK \
-                                --region $AWS_REGION
-
-                            echo "Stack successfully removed."
+                                --stack-name $STACK_NAME \
+                                --region $REGION
                         fi
 
-                        echo "===== Building Application ====="
                         sam build
-
-                        echo "===== Validating Template ====="
-                        sam validate --region $AWS_REGION
-
-                        echo "===== Deploying Application ====="
+                        sam validate --region $REGION
                         sam deploy --config-env staging --no-fail-on-empty-changeset
                     '''
-                    
-                    env.APP_ENDPOINT = sh(
+
+                    env.BASE_URL = sh(
                         script: '''
                             aws cloudformation describe-stacks \
                               --stack-name todo-list-aws-staging \
@@ -118,22 +86,41 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    echo "Application URL = ${env.APP_ENDPOINT}"
+                    echo "API URL = ${env.BASE_URL}"
                 }
             }
         }
 
-   stage('==========>PROMOTE (MERGE MAIN)<===========') {
+        stage('Rest Test') {
             steps {
-                echo "🚀 Promoviendo versión ..."
-                withCredentials([usernamePassword(credentialsId: 'GITHUB-CP1.4', usernameVariable: 'GITHUB_USER', passwordVariable: 'GITHUB_TOKEN')]) {
-                  sh '''
-                    git fetch origin
-                    git checkout main
-                    git pull origin main
-                    git merge origin/develop
-                    git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
-                  '''
+                sh """
+                    export BASE_URL=${env.BASE_URL}
+                    python3 -m venv .venv
+                    . .venv/bin/activate
+                    pip install pytest requests
+                    pytest -v test/integration/todoApiTest.py --junitxml=result_unit.xml
+                """
+                junit 'result_unit.xml'
+            }
+        }
+
+        stage('Promote') {
+            steps {
+                echo "🚀 Promoting version to main..."
+
+                withCredentials([usernamePassword(
+                    credentialsId: 'GITHUB-CP1.4',
+                    usernameVariable: 'GITHUB_USER',
+                    passwordVariable: 'GITHUB_TOKEN'
+                )]) {
+
+                    sh '''
+                        git fetch origin
+                        git checkout main
+                        git pull origin main
+                        git merge origin/develop
+                        git push https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/${GITHUB_USER}/todo-list-aws-cp1-3.git main
+                    '''
                 }
             }
         }
