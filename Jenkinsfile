@@ -10,6 +10,7 @@ pipeline {
         //     }
         // } 
         
+        
         stage('Workspace Check') { 
             steps { 
                 sh 'ls -lah'
