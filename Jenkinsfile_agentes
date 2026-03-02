@@ -4,6 +4,7 @@ pipeline {
     stages {
         stage('Get Code') {
             steps {
+                sh 'echo "===> Etapa: Get Code"; whoami; hostname'
                 git(
                     branch: 'develop',
                     url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
@@ -15,6 +16,7 @@ pipeline {
         stage('Static Test') {
             agent { label 'agente-estatico' }
             steps {
+                sh 'echo "===> Etapa: Static Test"; whoami; hostname'
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
                         export PYTHONPATH=.
@@ -36,6 +38,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
+                sh 'echo "===> Etapa: Deploy"; whoami; hostname'
                 script {
                     sh '''
                         set -e
@@ -76,6 +79,7 @@ pipeline {
         stage('Rest Test') {
             agent { label 'agente-api' }
             steps {
+                sh 'echo "===> Etapa: Rest Test"; whoami; hostname'
                 unstash 'api_url'
                 script {
                     env.BASE_URL = sh(script: "cat base_url.txt", returnStdout: true).trim()
@@ -93,6 +97,7 @@ pipeline {
 
         stage('Promote') {
             steps {
+                sh 'echo "===> Etapa: Promote"; whoami; hostname'
                 echo "🚀 Promoting version to main..."
                 withCredentials([usernamePassword(
                     credentialsId: 'GITHUB-CP1.4',
