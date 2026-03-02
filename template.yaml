@@ -25,7 +25,7 @@ Resources:
   ServerlessApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: !Sub "todo-list-api-${Stage}"
+      Name: !Sub "todo-list-${Stage}"
       StageName: !Ref Stage
 
   # DynamoDB
