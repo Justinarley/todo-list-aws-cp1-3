@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
   todo-list-aws
@@ -14,7 +14,7 @@ Parameters:
       - default
       - staging
       - production
-    Description: Enter staging or production. Default is default  
+    Description: Enter staging or production. Default is default
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -24,11 +24,10 @@ Globals:
       Variables:
         DYNAMODB_TABLE: !Ref TodosDynamoDbTable
         ENDPOINT_OVERRIDE: ""
-    
+
 Resources:
-  
   CreateTodoFunction:
-    Type: AWS::Serverless::Function 
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
@@ -41,7 +40,7 @@ Resources:
             Path: /todos
             Method: post
   ListTodosFunction:
-    Type: AWS::Serverless::Function 
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
@@ -54,7 +53,7 @@ Resources:
             Path: /todos
             Method: get
   GetTodoFunction:
-    Type: AWS::Serverless::Function 
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
@@ -67,7 +66,7 @@ Resources:
             Path: /todos/{id}
             Method: get
   UpdateTodoFunction:
-    Type: AWS::Serverless::Function 
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
@@ -80,7 +79,7 @@ Resources:
             Path: /todos/{id}
             Method: put
   DeleteTodoFunction:
-    Type: AWS::Serverless::Function 
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
@@ -92,21 +91,20 @@ Resources:
           Properties:
             Path: /todos/{id}
             Method: delete
-            
+
   TodosDynamoDbTable:
     Type: AWS::DynamoDB::Table
-    Properties: 
-      TableName: !Sub "${Stage}-TodosDynamoDbTable"
-      AttributeDefinitions: 
+    Properties:
+      TableName: !Sub "${Stage}-AppTodo-Data"
+      AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
-      KeySchema: 
+      KeySchema:
         - AttributeName: id
           KeyType: HASH
-      ProvisionedThroughput: 
+      ProvisionedThroughput:
         ReadCapacityUnits: 1
         WriteCapacityUnits: 1
-
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
@@ -130,4 +128,3 @@ Outputs:
   DeleteTodoApi:
     Description: "API Gateway endpoint URL for ${opt:stage} stage for Delete TODO"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
-
