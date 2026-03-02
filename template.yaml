@@ -1,11 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  todo-list-aws
+Description: Todo List API - AWS SAM
 
-  Application TODO-LIST with SAM format
-
-# Parameters
 Parameters:
   Stage:
     Type: String
@@ -14,117 +10,112 @@ Parameters:
       - default
       - staging
       - production
-    Description: Enter staging or production. Default is default
 
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Runtime: python3.12
+    Timeout: 10
     Environment:
       Variables:
-        DYNAMODB_TABLE: !Ref TodosDynamoDbTable
-        ENDPOINT_OVERRIDE: ""
+        STAGE: !Ref Stage
+        TABLE_NAME: !Sub "todo-list-${Stage}"
 
 Resources:
-  CreateTodoFunction:
-    Type: AWS::Serverless::Function
+  # API
+  ServerlessApi:
+    Type: AWS::Serverless::Api
     Properties:
-      CodeUri: src/
-      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
-      Handler: create.create
-      Runtime: python3.12
-      Events:
-        Create:
-          Type: Api
-          Properties:
-            Path: /todos
-            Method: post
-  ListTodosFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
-      Handler: list.list
-      Runtime: python3.12
-      Events:
-        Create:
-          Type: Api
-          Properties:
-            Path: /todos
-            Method: get
-  GetTodoFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
-      Handler: get.get
-      Runtime: python3.12
-      Events:
-        Create:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: get
-  UpdateTodoFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
-      Handler: update.update
-      Runtime: python3.12
-      Events:
-        Create:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: put
-  DeleteTodoFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
-      Handler: delete.delete
-      Runtime: python3.12
-      Events:
-        Create:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: delete
+      Name: !Sub "todo-list-api-${Stage}"
+      StageName: !Ref Stage
 
-  TodosDynamoDbTable:
+  # DynamoDB
+  TodosTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${Stage}-AppTodo-Data"
+      TableName: !Sub "todo-list-${Stage}"
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
-      ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
+
+  # CREATE
+  CreateTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: create.create
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
+      Events:
+        CreateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessApi
+            Path: /todos
+            Method: POST
+
+  # LIST
+  ListTodosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: list.list
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
+      Events:
+        ListTodos:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessApi
+            Path: /todos
+            Method: GET
+
+  # GET
+  GetTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: get.get
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
+      Events:
+        GetTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessApi
+            Path: /todos/{id}
+            Method: GET
+
+  # UPDATE
+  UpdateTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: update.update
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
+      Events:
+        UpdateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessApi
+            Path: /todos/{id}
+            Method: PUT
+
+  # DELETE
+  DeleteTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: delete.delete
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
+      Events:
+        DeleteTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessApi
+            Path: /todos/{id}
+            Method: DELETE
 
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  BaseUrlApi:
-    Description: "Base URL of API"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
-  CreateTodoApi:
-    Description: "API Gateway endpoint URL for ${opt:stage} stage for Create TODO"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/"
-  ListTodosApi:
-    Description: "API Gateway endpoint URL for ${opt:stage} stage for List TODO"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos"
-  GetTodoApi:
-    Description: "API Gateway endpoint URL for ${opt:stage} stage for Get TODO"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
-  UpdateTodoApi:
-    Description: "API Gateway endpoint URL for ${opt:stage} stage for Update TODO"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
-  DeleteTodoApi:
-    Description: "API Gateway endpoint URL for ${opt:stage} stage for Delete TODO"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
+  ApiUrl:
+    Value: !Sub "https://${ServerlessApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
