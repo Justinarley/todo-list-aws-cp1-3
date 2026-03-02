@@ -1,7 +1,17 @@
 pipeline {
     agent any
-
-    stages {
+     
+        stage('====>Download configuration<====') {
+            steps {
+                echo "📥 Descargando configuración de entorno..."
+                 sh '''
+                    curl -o samconfig.toml \
+                    https://raw.githubusercontent.com/Justinarley/todo-list-aws-config/staging/samconfig.toml
+                '''
+                echo "✅ Config descargada:"
+                sh "cat samconfig.toml"
+            }   
+        }
 
         stage('Get Code') {
             steps {
