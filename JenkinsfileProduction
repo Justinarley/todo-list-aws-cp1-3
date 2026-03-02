@@ -8,6 +8,17 @@ pipeline {
 
     stages {
 
+
+        stage('Checkout Code') {
+            steps {
+                git(
+                    branch: 'main',
+                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
+                    credentialsId: 'GITHUB-CP1.4'
+                )
+            }
+        }
+        
         stage('====>Download configuration<====') {
             steps {
                 echo "📥 Descargando configuración de entorno..."
@@ -17,16 +28,6 @@ pipeline {
                 '''
                 echo "✅ Config descargada:"
                 sh "cat samconfig.toml"
-            }
-        }
-
-        stage('Checkout Code') {
-            steps {
-                git(
-                    branch: 'main',
-                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
-                    credentialsId: 'GITHUB-CP1.4'
-                )
             }
         }
 
