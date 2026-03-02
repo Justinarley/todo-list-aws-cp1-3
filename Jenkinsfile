@@ -3,14 +3,15 @@ pipeline {
     
     stages { 
         
-        // stage('Source Retrieval') { 
-        //     steps { 
-        //         git branch: 'develop',
-        //         url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git'
-        //     }
-        // } 
+        stage('Source Retrieval') { 
+            steps { 
+                git branch: 'develop',
+                url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git'
+            }
+        } 
         
         
+
         stage('Workspace Check') { 
             steps { 
                 sh 'ls -lah'
