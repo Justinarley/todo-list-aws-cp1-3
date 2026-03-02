@@ -1,16 +1,9 @@
 pipeline { 
     agent any 
-    environment {
-        STACK_NAME = "todo-list-aws-staging"
-    }
     stages { 
         stage('Checkout Code') { 
             steps { 
-                git(
-                    branch: 'develop',
-                    url: 'https://github.com/Justinarley/todo-list-aws-cp1-3.git',
-                    credentialsId: 'GITHUB-CP1.4'
-                )
+                checkout scm
             } 
         }
 
@@ -88,6 +81,15 @@ pipeline {
         stage('SAM deploy') {
             steps {
                 script {
+                    // Determinar STACK_NAME y ENVIRONMENT según la rama
+                    if (env.BRANCH_NAME == 'main') {
+                        env.STACK_NAME = "todo-list-aws-production"
+                        env.ENVIRONMENT = "production"
+                    } else {
+                        env.STACK_NAME = "todo-list-aws-staging"
+                        env.ENVIRONMENT = "staging"
+                    }
+
                     sh '''
                         set -e
                         REGION="us-east-1"
@@ -117,14 +119,8 @@ pipeline {
                         echo "===== SAM Validate ====="
                         sam validate --region $REGION
 
-                        if [ "$BRANCH_NAME" = "main" ]; then
-                            ENVIRONMENT="production"
-                        else
-                            ENVIRONMENT="staging"
-                        fi
-
                         echo "Deploying to environment: $ENVIRONMENT"
-                        sam deploy --no-fail-on-empty-changeset
+                        sam deploy --config-env $ENVIRONMENT --no-fail-on-empty-changeset
                     '''
 
                     env.BASE_URL = sh(
