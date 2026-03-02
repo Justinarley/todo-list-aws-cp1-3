@@ -16,7 +16,6 @@ pipeline {
         stage('Static Test') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-
                     sh '''
                         export PYTHONPATH=.
                         flake8 --exit-zero --format=pylint src > flake8.out
@@ -41,7 +40,6 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-
                     sh '''
                         set -e
 
